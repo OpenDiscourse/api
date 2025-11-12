@@ -1,0 +1,81 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "govinfo-client"
+version = "0.1.0"
+description = "A strongly-typed Python client library for the GovInfo API with database integration and DataFrame support"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "CC0 1.0 Universal"}
+authors = [
+    {name = "GovInfo API Team"}
+]
+keywords = ["govinfo", "api", "government", "data", "congress", "federal-register"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: CC0 1.0 Universal (CC0 1.0) Public Domain Dedication",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "pydantic>=2.0.0",
+    "pydantic-ai>=0.0.1",
+    "httpx>=0.24.0",
+    "pandas>=2.0.0",
+    "sqlalchemy>=2.0.0",
+    "alembic>=1.12.0",
+    "python-dotenv>=1.0.0",
+    "rich>=13.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.5.0",
+    "types-requests",
+]
+
+[project.urls]
+Homepage = "https://github.com/OpenDiscourse/api"
+Documentation = "https://api.govinfo.gov/docs"
+Repository = "https://github.com/OpenDiscourse/api"
+Issues = "https://github.com/OpenDiscourse/api/issues"
+
+[project.scripts]
+govinfo = "govinfo_client.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/govinfo_client"]
+
+[tool.black]
+line-length = 100
+target-version = ['py39']
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
