@@ -1,0 +1,62 @@
+name: Wiki Update Request
+description: Request a wiki page to be created or updated
+title: "Wiki Update: "
+labels: ["wiki-update", "documentation"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This template automatically triggers the wiki automation workflow.
+        Fill in the details below and the wiki page will be updated.
+
+  - type: input
+    id: page_name
+    attributes:
+      label: Wiki Page Name
+      description: Name of the wiki page (without .md extension)
+      placeholder: API-Documentation
+    validations:
+      required: true
+
+  - type: dropdown
+    id: action
+    attributes:
+      label: Action
+      description: What action should be performed?
+      options:
+        - Create new page
+        - Update existing page
+        - Archive page
+    validations:
+      required: true
+
+  - type: textarea
+    id: content
+    attributes:
+      label: Page Content
+      description: The markdown content for the wiki page
+      placeholder: |
+        # Page Title
+        
+        Content goes here...
+      render: markdown
+    validations:
+      required: true
+
+  - type: textarea
+    id: rationale
+    attributes:
+      label: Rationale
+      description: Why is this wiki page needed or being updated?
+      placeholder: This page is needed because...
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Code of Conduct
+      description: By submitting this issue, you agree to follow our Code of Conduct
+      options:
+        - label: I agree to follow this project's Code of Conduct
+          required: true

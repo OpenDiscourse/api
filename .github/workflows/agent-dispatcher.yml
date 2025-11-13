@@ -1,0 +1,150 @@
+name: Agent Command Dispatcher
+
+on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      command:
+        description: 'Agent command to execute'
+        required: true
+        type: choice
+        options:
+          - wiki-create
+          - wiki-update
+          - project-add
+          - issue-create
+          - issue-label
+          - security-scan
+      parameters:
+        description: 'JSON parameters for the command'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  parse-command:
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/agent')) ||
+      github.event_name == 'workflow_dispatch'
+    outputs:
+      command: ${{ steps.parse.outputs.command }}
+      parameters: ${{ steps.parse.outputs.parameters }}
+    
+    steps:
+      - name: Parse agent command
+        id: parse
+        uses: actions/github-script@v7
+        with:
+          script: |
+            let command = '';
+            let parameters = {};
+            
+            if (context.eventName === 'workflow_dispatch') {
+              command = '${{ inputs.command }}';
+              parameters = JSON.parse('${{ inputs.parameters }}' || '{}');
+            } else if (context.eventName === 'issue_comment') {
+              const comment = context.payload.comment.body;
+              const lines = comment.split('\n');
+              const commandLine = lines[0];
+              
+              // Parse command: /agent <command> <params>
+              const match = commandLine.match(/^\/agent\s+(\S+)(?:\s+(.*))?$/);
+              if (match) {
+                command = match[1];
+                
+                // Try to parse parameters as JSON
+                if (match[2]) {
+                  try {
+                    parameters = JSON.parse(match[2]);
+                  } catch {
+                    // If not JSON, treat as key=value pairs
+                    const pairs = match[2].split(/\s+/);
+                    pairs.forEach(pair => {
+                      const [key, value] = pair.split('=');
+                      if (key && value) {
+                        parameters[key] = value;
+                      }
+                    });
+                  }
+                }
+                
+                // Get additional context from issue
+                parameters.issue_number = context.payload.issue.number;
+                parameters.issue_title = context.payload.issue.title;
+                parameters.issue_body = context.payload.issue.body;
+              }
+            }
+            
+            core.setOutput('command', command);
+            core.setOutput('parameters', JSON.stringify(parameters));
+            
+            return { command, parameters };
+
+      - name: Acknowledge command
+        if: github.event_name == 'issue_comment'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: 'rocket'
+            });
+
+  execute-wiki-command:
+    needs: parse-command
+    if: startsWith(needs.parse-command.outputs.command, 'wiki-')
+    uses: ./.github/workflows/wiki-automation.yml
+    with:
+      action: ${{ needs.parse-command.outputs.command == 'wiki-create' && 'create' || 'update' }}
+      page_name: ${{ fromJSON(needs.parse-command.outputs.parameters).page_name }}
+      content: ${{ fromJSON(needs.parse-command.outputs.parameters).content }}
+
+  execute-project-command:
+    needs: parse-command
+    if: startsWith(needs.parse-command.outputs.command, 'project-')
+    uses: ./.github/workflows/project-automation.yml
+    with:
+      action: add_issue_to_project
+      project_number: ${{ fromJSON(needs.parse-command.outputs.parameters).project_number || 1 }}
+
+  execute-issue-command:
+    needs: parse-command
+    if: startsWith(needs.parse-command.outputs.command, 'issue-')
+    uses: ./.github/workflows/issue-automation.yml
+
+  execute-security-command:
+    needs: parse-command
+    if: startsWith(needs.parse-command.outputs.command, 'security-')
+    uses: ./.github/workflows/vulnerability-automation.yml
+    with:
+      action: scan
+
+  report-completion:
+    needs: [parse-command, execute-wiki-command, execute-project-command, execute-issue-command, execute-security-command]
+    runs-on: ubuntu-latest
+    if: always() && github.event_name == 'issue_comment'
+    
+    steps:
+      - name: Report completion
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const command = '${{ needs.parse-command.outputs.command }}';
+            const success = '${{ job.status }}' === 'success';
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body: success 
+                ? `✅ Agent command \`${command}\` completed successfully!`
+                : `❌ Agent command \`${command}\` failed. Please check the workflow logs.`
+            });
