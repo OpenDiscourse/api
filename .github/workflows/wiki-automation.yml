@@ -1,0 +1,143 @@
+name: Wiki Automation
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Wiki action to perform'
+        required: true
+        type: choice
+        options:
+          - create
+          - update
+          - archive
+      page_name:
+        description: 'Wiki page name'
+        required: true
+        type: string
+      content:
+        description: 'Page content (for create/update)'
+        required: false
+        type: string
+      content_file:
+        description: 'Path to content file (alternative to content input)'
+        required: false
+        type: string
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  manage-wiki:
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issues' && contains(github.event.issue.labels.*.name, 'wiki-update'))
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Checkout wiki
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}.wiki
+          path: wiki
+
+      - name: Extract wiki details from issue
+        if: github.event_name == 'issues'
+        id: extract
+        run: |
+          # Extract page name and content from issue body
+          PAGE_NAME=$(echo "${{ github.event.issue.title }}" | sed 's/^.*: //')
+          echo "page_name=${PAGE_NAME}" >> $GITHUB_OUTPUT
+          echo "content<<EOF" >> $GITHUB_OUTPUT
+          echo "${{ github.event.issue.body }}" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Set action parameters
+        id: params
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "action=${{ inputs.action }}" >> $GITHUB_OUTPUT
+            echo "page_name=${{ inputs.page_name }}" >> $GITHUB_OUTPUT
+            if [ -n "${{ inputs.content_file }}" ]; then
+              CONTENT=$(cat "${{ inputs.content_file }}")
+              echo "content<<EOF" >> $GITHUB_OUTPUT
+              echo "$CONTENT" >> $GITHUB_OUTPUT
+              echo "EOF" >> $GITHUB_OUTPUT
+            else
+              echo "content<<EOF" >> $GITHUB_OUTPUT
+              echo "${{ inputs.content }}" >> $GITHUB_OUTPUT
+              echo "EOF" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "action=update" >> $GITHUB_OUTPUT
+            echo "page_name=${{ steps.extract.outputs.page_name }}" >> $GITHUB_OUTPUT
+            echo "content<<EOF" >> $GITHUB_OUTPUT
+            echo "${{ steps.extract.outputs.content }}" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create or update wiki page
+        if: steps.params.outputs.action == 'create' || steps.params.outputs.action == 'update'
+        run: |
+          cd wiki
+          PAGE_FILE="${{ steps.params.outputs.page_name }}.md"
+          
+          # Create or update the page
+          cat > "$PAGE_FILE" << 'EOF'
+          ${{ steps.params.outputs.content }}
+          EOF
+          
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Commit and push
+          git add "$PAGE_FILE"
+          if [ "${{ steps.params.outputs.action }}" == "create" ]; then
+            git commit -m "Create wiki page: ${{ steps.params.outputs.page_name }}"
+          else
+            git commit -m "Update wiki page: ${{ steps.params.outputs.page_name }}"
+          fi
+          git push
+
+      - name: Archive wiki page
+        if: steps.params.outputs.action == 'archive'
+        run: |
+          cd wiki
+          PAGE_FILE="${{ steps.params.outputs.page_name }}.md"
+          ARCHIVE_FILE="Archived-${{ steps.params.outputs.page_name }}.md"
+          
+          if [ -f "$PAGE_FILE" ]; then
+            # Add archive notice
+            echo "# [ARCHIVED]" > "$ARCHIVE_FILE"
+            echo "" >> "$ARCHIVE_FILE"
+            echo "> This page has been archived on $(date +%Y-%m-%d)" >> "$ARCHIVE_FILE"
+            echo "" >> "$ARCHIVE_FILE"
+            cat "$PAGE_FILE" >> "$ARCHIVE_FILE"
+            
+            # Remove original and commit
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git rm "$PAGE_FILE"
+            git add "$ARCHIVE_FILE"
+            git commit -m "Archive wiki page: ${{ steps.params.outputs.page_name }}"
+            git push
+          fi
+
+      - name: Comment on issue
+        if: github.event_name == 'issues'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '✅ Wiki page has been updated successfully!'
+            })

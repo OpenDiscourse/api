@@ -1,0 +1,172 @@
+name: Project Automation
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Project action to perform'
+        required: true
+        type: choice
+        options:
+          - create_item
+          - update_status
+          - add_issue_to_project
+          - add_pr_to_project
+      project_number:
+        description: 'Project number'
+        required: true
+        type: number
+      issue_number:
+        description: 'Issue or PR number (for linking)'
+        required: false
+        type: number
+      status:
+        description: 'Status to set (e.g., Todo, In Progress, Done)'
+        required: false
+        type: string
+  issues:
+    types: [opened, labeled]
+  pull_request:
+    types: [opened, labeled]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  manage-project:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Get project data
+        uses: actions/github-script@v7
+        id: get-project
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const query = `query($owner: String!, $number: Int!) {
+              organization(login: $owner) {
+                projectV2(number: $number) {
+                  id
+                  title
+                  fields(first: 20) {
+                    nodes {
+                      ... on ProjectV2Field {
+                        id
+                        name
+                      }
+                      ... on ProjectV2SingleSelectField {
+                        id
+                        name
+                        options {
+                          id
+                          name
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }`;
+            
+            const projectNumber = ${{ inputs.project_number || 1 }};
+            const variables = {
+              owner: context.repo.owner,
+              number: parseInt(projectNumber)
+            };
+            
+            try {
+              const result = await github.graphql(query, variables);
+              return result.organization.projectV2;
+            } catch (error) {
+              console.log('Error fetching project:', error);
+              return null;
+            }
+
+      - name: Add issue to project
+        if: |
+          github.event_name == 'issues' ||
+          (github.event_name == 'workflow_dispatch' && inputs.action == 'add_issue_to_project')
+        uses: actions/add-to-project@v0.5.0
+        with:
+          project-url: https://github.com/orgs/${{ github.repository_owner }}/projects/${{ inputs.project_number || 1 }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Add PR to project
+        if: |
+          github.event_name == 'pull_request' ||
+          (github.event_name == 'workflow_dispatch' && inputs.action == 'add_pr_to_project')
+        uses: actions/add-to-project@v0.5.0
+        with:
+          project-url: https://github.com/orgs/${{ github.repository_owner }}/projects/${{ inputs.project_number || 1 }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update project item status
+        if: github.event_name == 'workflow_dispatch' && inputs.action == 'update_status'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const mutation = `mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $value: String!) {
+              updateProjectV2ItemFieldValue(
+                input: {
+                  projectId: $projectId
+                  itemId: $itemId
+                  fieldId: $fieldId
+                  value: { 
+                    singleSelectOptionId: $value
+                  }
+                }
+              ) {
+                projectV2Item {
+                  id
+                }
+              }
+            }`;
+            
+            // This would require the item ID which needs to be obtained first
+            console.log('Status update requested for: ${{ inputs.status }}');
+
+      - name: Auto-label project items
+        if: github.event_name == 'issues' && github.event.action == 'opened'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Auto-add labels based on issue content
+            const issue = context.payload.issue;
+            const labels = [];
+            
+            if (issue.title.toLowerCase().includes('bug')) {
+              labels.push('bug');
+            }
+            if (issue.title.toLowerCase().includes('feature')) {
+              labels.push('enhancement');
+            }
+            if (issue.body && issue.body.toLowerCase().includes('urgent')) {
+              labels.push('priority:high');
+            }
+            
+            if (labels.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: labels
+              });
+            }
+
+      - name: Comment on successful addition
+        if: github.event_name == 'issues' || github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueNumber = context.payload.issue?.number || context.payload.pull_request?.number;
+            if (issueNumber) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: '✅ Added to project tracking board!'
+              });
+            }

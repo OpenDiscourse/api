@@ -1,0 +1,125 @@
+# This file configures the label syncing for the repository
+# Labels defined here will be automatically created/updated
+
+labels:
+  # Type labels
+  - name: bug
+    color: d73a4a
+    description: Something isn't working
+  
+  - name: enhancement
+    color: a2eeef
+    description: New feature or request
+  
+  - name: documentation
+    color: 0075ca
+    description: Improvements or additions to documentation
+  
+  - name: security
+    color: ee0701
+    description: Security vulnerability or concern
+  
+  # Priority labels
+  - name: priority:low
+    color: d4e157
+    description: Low priority
+  
+  - name: priority:medium
+    color: fdd835
+    description: Medium priority
+  
+  - name: priority:high
+    color: fb8c00
+    description: High priority
+  
+  - name: priority:critical
+    color: c62828
+    description: Critical priority
+  
+  # Status labels
+  - name: needs-triage
+    color: ededed
+    description: Needs to be triaged
+  
+  - name: needs-review
+    color: fbca04
+    description: Needs review from maintainers
+  
+  - name: in-progress
+    color: 0e8a16
+    description: Work in progress
+  
+  - name: blocked
+    color: b60205
+    description: Blocked by other issues
+  
+  - name: stale
+    color: 795548
+    description: Inactive for extended period
+  
+  # Component labels
+  - name: component:api
+    color: 1d76db
+    description: Related to API functionality
+  
+  - name: component:database
+    color: 5319e7
+    description: Related to database
+  
+  - name: component:ci-cd
+    color: 006b75
+    description: Related to CI/CD workflows
+  
+  - name: component:docs
+    color: 0075ca
+    description: Related to documentation
+  
+  # Automation labels
+  - name: automated
+    color: 7057ff
+    description: Created or managed by automation
+  
+  - name: dependencies
+    color: 0366d6
+    description: Pull requests that update dependencies
+  
+  - name: dependabot-summary
+    color: 0366d6
+    description: Dependabot alert summary
+  
+  - name: wiki-update
+    color: 1d76db
+    description: Triggers wiki automation
+  
+  # Other labels
+  - name: good first issue
+    color: 7057ff
+    description: Good for newcomers
+  
+  - name: help wanted
+    color: 008672
+    description: Extra attention is needed
+  
+  - name: duplicate
+    color: cfd3d7
+    description: This issue or PR already exists
+  
+  - name: invalid
+    color: e4e669
+    description: This doesn't seem right
+  
+  - name: wontfix
+    color: ffffff
+    description: This will not be worked on
+  
+  - name: major-update
+    color: ff6b6b
+    description: Major version update requiring review
+  
+  - name: python
+    color: 3776ab
+    description: Python related changes
+  
+  - name: github-actions
+    color: 2088ff
+    description: GitHub Actions related changes

@@ -11,6 +11,7 @@ Interactive documentation using the OpenAPI/swagger specification is available a
 4. [About the Data](#about-the-data)
 5. [Quickstart](#quickstart) - sample requests
 6. [Error Messages](#error-messages)
+7. [Agent Automation](./AGENT_AUTOMATION.md) - Automated repository management
 
 ## Keys
 

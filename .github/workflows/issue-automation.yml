@@ -1,0 +1,254 @@
+name: Issue Management Automation
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Issue action to perform'
+        required: true
+        type: choice
+        options:
+          - create
+          - comment
+          - close
+          - label
+          - assign
+      issue_number:
+        description: 'Issue number (for existing issues)'
+        required: false
+        type: number
+      title:
+        description: 'Issue title (for create)'
+        required: false
+        type: string
+      body:
+        description: 'Issue body or comment text'
+        required: false
+        type: string
+      labels:
+        description: 'Comma-separated labels'
+        required: false
+        type: string
+      assignees:
+        description: 'Comma-separated assignees'
+        required: false
+        type: string
+  issues:
+    types: [opened, labeled, closed, reopened]
+  issue_comment:
+    types: [created]
+  schedule:
+    # Run daily to check for stale issues
+    - cron: '0 0 * * *'
+
+permissions:
+  issues: write
+  pull-requests: write
+  contents: read
+
+jobs:
+  manage-issue:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Create issue
+        if: inputs.action == 'create'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const labels = '${{ inputs.labels }}'.split(',').map(l => l.trim()).filter(Boolean);
+            const assignees = '${{ inputs.assignees }}'.split(',').map(a => a.trim()).filter(Boolean);
+            
+            const issue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '${{ inputs.title }}',
+              body: '${{ inputs.body }}',
+              labels: labels,
+              assignees: assignees
+            });
+            
+            console.log(`Created issue #${issue.data.number}`);
+
+      - name: Add comment to issue
+        if: inputs.action == 'comment' && inputs.issue_number
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ inputs.issue_number }},
+              body: '${{ inputs.body }}'
+            });
+
+      - name: Close issue
+        if: inputs.action == 'close' && inputs.issue_number
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ inputs.issue_number }},
+              state: 'closed'
+            });
+            
+            if ('${{ inputs.body }}') {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: ${{ inputs.issue_number }},
+                body: '${{ inputs.body }}'
+              });
+            }
+
+      - name: Add labels to issue
+        if: inputs.action == 'label' && inputs.issue_number && inputs.labels
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const labels = '${{ inputs.labels }}'.split(',').map(l => l.trim()).filter(Boolean);
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ inputs.issue_number }},
+              labels: labels
+            });
+
+      - name: Assign issue
+        if: inputs.action == 'assign' && inputs.issue_number && inputs.assignees
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const assignees = '${{ inputs.assignees }}'.split(',').map(a => a.trim()).filter(Boolean);
+            await github.rest.issues.addAssignees({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ inputs.issue_number }},
+              assignees: assignees
+            });
+
+  auto-label-issue:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issues' && github.event.action == 'opened'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Auto-label based on content
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const labels = [];
+            const title = issue.title.toLowerCase();
+            const body = (issue.body || '').toLowerCase();
+            
+            // Category labels
+            if (title.includes('bug') || body.includes('bug')) {
+              labels.push('bug');
+            }
+            if (title.includes('feature') || title.includes('enhancement')) {
+              labels.push('enhancement');
+            }
+            if (title.includes('doc') || title.includes('documentation')) {
+              labels.push('documentation');
+            }
+            if (title.includes('security') || body.includes('vulnerability')) {
+              labels.push('security');
+            }
+            
+            // Priority labels
+            if (body.includes('urgent') || body.includes('critical')) {
+              labels.push('priority:high');
+            }
+            
+            // Component labels
+            if (body.includes('api') || title.includes('api')) {
+              labels.push('component:api');
+            }
+            if (body.includes('database') || body.includes('db')) {
+              labels.push('component:database');
+            }
+            if (body.includes('workflow') || body.includes('action')) {
+              labels.push('component:ci-cd');
+            }
+            
+            if (labels.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: labels
+              });
+            }
+
+      - name: Auto-comment on new issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body: '👋 Thanks for opening this issue! A team member will review it shortly.\n\n**Auto-assigned labels:** The issue has been automatically labeled based on its content.\n**Next steps:** A maintainer will triage this issue and provide feedback.'
+            });
+
+  stale-issue-check:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    
+    steps:
+      - name: Mark stale issues
+        uses: actions/stale@v9
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          stale-issue-message: |
+            This issue has been automatically marked as stale because it has not had 
+            recent activity. It will be closed if no further activity occurs within 7 days.
+            If this issue is still relevant, please comment to keep it open.
+          close-issue-message: |
+            This issue has been automatically closed due to inactivity.
+            If you believe this issue is still relevant, please reopen it.
+          days-before-stale: 60
+          days-before-close: 7
+          stale-issue-label: 'stale'
+          exempt-issue-labels: 'pinned,security,priority:high'
+
+  respond-to-keywords:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issue_comment'
+    
+    steps:
+      - name: Respond to help keyword
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comment = context.payload.comment.body.toLowerCase();
+            
+            if (comment.includes('/help')) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.issue.number,
+                body: '## Available Commands\n\n- `/help` - Show this help message\n- `/close` - Close this issue (requires write access)\n- `/reopen` - Reopen this issue (requires write access)\n- `/assign @username` - Assign to a user\n- `/label label-name` - Add a label\n- `/priority high|medium|low` - Set priority\n\nFor more information, see our [Contributing Guide](./CONTRIBUTING.md).'
+              });
+            }
+            
+            if (comment.includes('/close') && context.payload.comment.author_association !== 'NONE') {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.issue.number,
+                state: 'closed'
+              });
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.issue.number,
+                body: '✅ Issue closed via command.'
+              });
+            }

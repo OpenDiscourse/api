@@ -1,0 +1,139 @@
+name: Auto-merge Dependabot PRs
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  auto-approve-dependabot:
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]'
+    
+    steps:
+      - name: Get PR metadata
+        uses: actions/github-script@v7
+        id: metadata
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const result = {
+              isSecurity: pr.labels.some(l => l.name === 'security'),
+              isMinor: pr.title.includes('minor') || pr.title.includes('patch'),
+              updateType: 'unknown'
+            };
+            
+            // Parse PR body to determine update type
+            const body = pr.body || '';
+            if (body.includes('security')) {
+              result.updateType = 'security';
+            } else if (body.includes('minor')) {
+              result.updateType = 'minor';
+            } else if (body.includes('patch')) {
+              result.updateType = 'patch';
+            }
+            
+            return result;
+
+      - name: Auto-approve security updates
+        if: fromJSON(steps.metadata.outputs.result).isSecurity || fromJSON(steps.metadata.outputs.result).updateType == 'security'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.pulls.createReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              event: 'APPROVE',
+              body: '✅ Auto-approved: Security update from Dependabot'
+            });
+
+      - name: Auto-approve minor/patch updates
+        if: fromJSON(steps.metadata.outputs.result).isMinor || fromJSON(steps.metadata.outputs.result).updateType == 'minor' || fromJSON(steps.metadata.outputs.result).updateType == 'patch'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.pulls.createReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              event: 'APPROVE',
+              body: '✅ Auto-approved: Minor/patch update from Dependabot'
+            });
+
+      - name: Enable auto-merge
+        if: |
+          fromJSON(steps.metadata.outputs.result).isSecurity || 
+          fromJSON(steps.metadata.outputs.result).isMinor ||
+          fromJSON(steps.metadata.outputs.result).updateType == 'security' ||
+          fromJSON(steps.metadata.outputs.result).updateType == 'minor' ||
+          fromJSON(steps.metadata.outputs.result).updateType == 'patch'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.pulls.createReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              event: 'APPROVE',
+              body: '✅ Auto-approved by GitHub Actions'
+            });
+            
+            // Enable auto-merge if all checks pass
+            try {
+              await github.graphql(`
+                mutation EnableAutoMerge($pullRequestId: ID!) {
+                  enablePullRequestAutoMerge(input: {
+                    pullRequestId: $pullRequestId,
+                    mergeMethod: SQUASH
+                  }) {
+                    pullRequest {
+                      id
+                    }
+                  }
+                }
+              `, {
+                pullRequestId: context.payload.pull_request.node_id
+              });
+              
+              console.log('Auto-merge enabled');
+            } catch (error) {
+              console.log('Failed to enable auto-merge:', error.message);
+            }
+
+  notify-on-major-update:
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]'
+    
+    steps:
+      - name: Check if major update
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const isMajor = pr.title.includes('major');
+            const body = pr.body || '';
+            const hasMajorUpdate = body.includes('major') || body.includes('breaking');
+            
+            if (isMajor || hasMajorUpdate) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body: '⚠️ **Major Update Detected**\n\nThis PR contains a major version update which may include breaking changes.\nPlease review the changelog carefully before merging.\n\n**Required Actions:**\n1. Review the upgrade guide\n2. Check for breaking changes\n3. Run full test suite\n4. Manual testing recommended\n\nThis PR will **not** be auto-merged and requires manual review.'
+              });
+              
+              // Add label
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                labels: ['major-update', 'needs-review']
+              });
+            }
