@@ -194,10 +194,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.payload.issue.number,
-              body: `👋 Thanks for opening this issue! A team member will review it shortly.
-              
-**Auto-assigned labels:** The issue has been automatically labeled based on its content.
-**Next steps:** A maintainer will triage this issue and provide feedback.`
+              body: '👋 Thanks for opening this issue! A team member will review it shortly.\n\n**Auto-assigned labels:** The issue has been automatically labeled based on its content.\n**Next steps:** A maintainer will triage this issue and provide feedback.'
             });
 
   stale-issue-check:
@@ -237,16 +234,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.payload.issue.number,
-                body: `## Available Commands
-
-- \`/help\` - Show this help message
-- \`/close\` - Close this issue (requires write access)
-- \`/reopen\` - Reopen this issue (requires write access)
-- \`/assign @username\` - Assign to a user
-- \`/label label-name\` - Add a label
-- \`/priority high|medium|low\` - Set priority
-
-For more information, see our [Contributing Guide](./CONTRIBUTING.md).`
+                body: '## Available Commands\n\n- `/help` - Show this help message\n- `/close` - Close this issue (requires write access)\n- `/reopen` - Reopen this issue (requires write access)\n- `/assign @username` - Assign to a user\n- `/label label-name` - Add a label\n- `/priority high|medium|low` - Set priority\n\nFor more information, see our [Contributing Guide](./CONTRIBUTING.md).'
               });
             }
             

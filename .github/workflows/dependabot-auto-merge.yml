@@ -126,18 +126,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: pr.number,
-                body: `⚠️ **Major Update Detected**
-                
-This PR contains a major version update which may include breaking changes.
-Please review the changelog carefully before merging.
-
-**Required Actions:**
-1. Review the upgrade guide
-2. Check for breaking changes
-3. Run full test suite
-4. Manual testing recommended
-
-This PR will **not** be auto-merged and requires manual review.`
+                body: '⚠️ **Major Update Detected**\n\nThis PR contains a major version update which may include breaking changes.\nPlease review the changelog carefully before merging.\n\n**Required Actions:**\n1. Review the upgrade guide\n2. Check for breaking changes\n3. Run full test suite\n4. Manual testing recommended\n\nThis PR will **not** be auto-merged and requires manual review.'
               });
               
               // Add label
